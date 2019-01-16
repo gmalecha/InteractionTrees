@@ -12,6 +12,8 @@ theories/OpenSum.v
 
 theories/StdEffects.v
 
+theories/Termination.v
+
 theories/Fix.v
 theories/UpTo.v
 theories/MutFix.v

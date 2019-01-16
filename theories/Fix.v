@@ -6,7 +6,7 @@
  *)
 
 From ITree Require Import
-     Core Morphisms OpenSum.
+     Core Morphisms OpenSum Termination.
 
 Module Type FixSig.
   Section Fix.
@@ -87,59 +87,18 @@ Module FixImpl <: FixSig.
       Variable lt_dom : dom -> dom -> Prop.
       Hypothesis wf_lt_dom : well_founded lt_dom.
 
-      Inductive terminates E (P : forall u, E u -> Prop) {t} : itree E t -> Type :=
-      | Ret_terminates x : terminates E P {| observe := RetF x |}
-      | Tau_terminates {i} : terminates E P i -> terminates E P {| observe := TauF i |}
-      | Vis_terminates {u} {e : E u} {k}
-                       (_ : P _ e)
-                       (_ : forall v, terminates E P (k v))
-        : terminates E P {| observe := VisF e k |}.
-      Arguments terminates {_} _ {_} _.
-      Arguments Ret_terminates {_ _ _} _.
-      Arguments Tau_terminates {_ _ _ _} _.
-      Arguments Vis_terminates {_ _ _ _} _ {_} _ _.
-
-      (* temporary *)
-      Lemma force : forall e t (x : itree e t), x = {| observe := x.(observe) |}.
-      Admitted.
-      Theorem bind_terminates
-      : forall {E} (P : forall u, E u -> Prop)
-          {t u} c (k : t -> itree E u),
-          terminates P c ->
-          (forall x, terminates P (k x)) ->
-          terminates P (ITree.bind c k).
-      Proof.
-        intros.
-        refine (
-            (fix rec c (t1 : terminates P c) : terminates P (ITree.bind c k) :=
-               match t1 with
-               | Ret_terminates x =>
-                 _
-               | _ => _
-               end) _ X).
-        { rewrite force. compute. rewrite <- force. eapply X0. }
-        { rewrite force. compute. eapply Tau_terminates.
-          eapply rec. eassumption. }
-        { rewrite force. compute.
-          eapply Vis_terminates. eassumption.
-          intros.
-          eapply rec. eapply t0. }
-      Defined.
-
       Definition cond x E (P : forall u, E u -> Prop) u (e : (E +' fixpoint) u) : Prop :=
         match e return Prop with
         | inlE x => P _ x
         | inrE (call y) => lt_dom y x
         end.
 
-      Theorem mfix_terminates
-      : forall (P : forall u, E u -> Prop),
-          (forall x, @terminates
-                  (E +' fixpoint)
-                  (cond x E P) _ (f x)) ->
-          forall x, @terminates E P _ (_mfix x).
+      Definition mfix_terminates {P : forall u, E u -> Prop}
+                 (Tbody : forall x, terminates (cond x E P) (f x))
+                 (x : dom)
+        : terminates P (_mfix x).
       Proof.
-        refine (fun P Term x =>
+        refine (
            Fix wf_lt_dom (fun x => forall p : itree (E +' fixpoint) (codom x),
                                terminates (cond x E P) p ->
                                terminates P (homFix p))
@@ -147,60 +106,48 @@ Module FixImpl <: FixSig.
                    (recurse : forall y : dom, lt_dom y x ->
                                          forall p : itree (E +' fixpoint) (codom _),
                                            terminates (cond _ E P) p ->
-                                           terminates P (homFix p))
-                   (p : _) (t : _) =>
+                                           terminates P (homFix p)) =>
                    (fix rec p (t : terminates (cond _ E P) p)
-                    : @terminates E P _ (homFix p) :=
-                      match t in @terminates _ _ _ p
-                            return @terminates E P _ (homFix p)
-                      with
-                      | Ret_terminates x =>
-                        _
-                      | Tau_terminates t =>
-                        _
-                      | Vis_terminates e pf tk =>
-                        _
-                      end) _ t
-                     ) x (f x) (Term _)).
-        { rewrite force. compute. constructor. }
-        { rewrite force. unfold homFix. compute.
-          eapply Tau_terminates. eapply rec. eapply t. }
-        { rewrite force.
-          destruct e.
-          { compute. eapply Vis_terminates; [ apply pf | ].
-            intros. eapply rec. eapply tk. }
-          { destruct f0.
-            compute.
-            eapply Tau_terminates.
-            change (terminates P (homFix (ITree.bind (f x1) i))).
-            cutrewrite (homFix (ITree.bind (f x1) i) = ITree.bind (homFix (f x1))
-                                                                  (fun x => homFix (i x))).
-            { eapply bind_terminates.
-              eapply recurse; eauto.
-              intros. eapply rec.
-              eapply tk. }
-            { admit. } } }
+                    : terminates P (homFix p) :=
+                      {| tobserve :=
+                           _ |})) x (f x) (Tbody _)).
+        refine  (
+            match t.(tobserve) in terminates' _ _ p
+                  return terminates' P _ (homFix {| observe := p |}).(observe)
+            with
+            | Ret_terminates x =>
+              Ret_terminates x
+            | Tau_terminates t =>
+              Tau_terminates (rec _ t)
+            | @Vis_terminates _ _ _ _ _ e k pf tk =>
+              match e as e
+                    return
+                    (cond _ E P _ e ->
+                     terminates' P (terminates P)
+                                 (observe (homFix (Vis e _))))
+              with
+              | inlE e0 => fun pf =>
+                Vis_terminates e0 pf (fun y => rec _ (tk y))
+              | inrE arg' => fun pf =>
+                _
+              end pf
+            end
+         ).
+        clear - Tbody tk recurse rec pf.
+        destruct arg'.
+        compute.
+        constructor.
+        change (terminates P
+                            (homFix (ITree.bind (f x0) k))).
+        cutrewrite (homFix (ITree.bind (f x0) k) =
+                    ITree.bind (homFix (f x0))
+                               (fun x => homFix (k x))).
+        { eapply bind_terminates.
+          - eapply recurse. eapply pf.
+            eapply Tbody.
+          - intros. eapply rec. eapply tk. }
+        { admit. }
       Admitted.
-
-      Fixpoint runE {P t} (p : itree E t) (term : terminates P p) {struct term}
-      : itree E t :=
-        match term with
-        | Ret_terminates x => Ret x
-        | Tau_terminates term => runE _ term
-        | Vis_terminates e _ t0 =>
-          Vis e (fun x => runE _ (t0 x))
-        end.
-
-      Fixpoint run {P t} (p : itree (fun _ => Empty_set) t)
-               (term : terminates P p) {struct term}
-      : t :=
-        match term with
-        | Ret_terminates x => x
-        | Tau_terminates term => run _ term
-        | Vis_terminates e _ t0 =>
-          match e with end
-        end.
-
 
     End mfix.
 
