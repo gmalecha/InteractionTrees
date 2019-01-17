@@ -36,3 +36,4 @@ examples/io.ml
 examples/io.mli
 
 *.native
+.nia.cache
