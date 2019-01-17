@@ -86,7 +86,7 @@ Module FixImpl <: FixSig.
           | call x => _mfix x
           end
         end.
-      
+
       Instance eq_itree_homfix {T} :
         Proper (@eq_itree _ T ==>
                 @eq_itree _ T) (@homFix T).
