@@ -1,5 +1,7 @@
 -Q theories ITree
 
+theories/paco2_respectful.v
+
 theories/Core.v
 
 theories/Eq/Eq.v
@@ -11,6 +13,8 @@ theories/MorphismsFacts.v
 theories/OpenSum.v
 
 theories/StdEffects.v
+
+theories/Termination.v
 
 theories/Fix.v
 theories/UpTo.v
